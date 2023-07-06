@@ -91,6 +91,11 @@ ssize_t (*fptr_getline)(char **lineptr, size_t *n, FILE *stream);
 ijon_trace_buffer_t* ijon_trace_buffer = NULL; 
 void* trace_buffer = NULL;
 
+/* For code coverage only */
+void* perm_trace_buffer = NULL;
+void* pcmap_buffer = NULL;
+size_t pcmap_buffer_size = 0;
+size_t perm_trace_buffer_size = 0;
 
 void ijon_max(uint8_t id, uint64_t value){
   if (ijon_trace_buffer && ijon_trace_buffer->ijon_data.max_data[id] < value){
@@ -560,6 +565,26 @@ void capabilites_configuration(bool timeout_detection, bool agent_tracing, bool 
 
         ijon_trace_buffer = mmap((void*)NULL, host_config.ijon_bitmap_size, PROT_READ | PROT_WRITE, MAP_SHARED | MAP_ANONYMOUS, -1, 0);
         memset(ijon_trace_buffer, 0xff, host_config.ijon_bitmap_size);
+
+        if (!!getenv("NYX_COVERAGE")) {
+            perm_trace_buffer_size = host_config.bitmap_size;
+            perm_trace_buffer = mmap((void*)NULL, perm_trace_buffer_size, PROT_READ | PROT_WRITE, MAP_SHARED | MAP_ANONYMOUS, -1, 0);
+            memset(perm_trace_buffer, 0x00, perm_trace_buffer_size);
+            mlock(perm_trace_buffer, perm_trace_buffer_size);
+
+            for (void* addr = perm_trace_buffer; addr < perm_trace_buffer + perm_trace_buffer_size; addr += getpagesize()) {
+              kAFL_hypercall(HYPERCALL_KAFL_PERSIST_PAGE_PAST_SNAPSHOT, (uintptr_t)addr);
+            }
+
+            pcmap_buffer_size = host_config.bitmap_size * sizeof(void*);
+            pcmap_buffer = mmap((void*)NULL, pcmap_buffer_size, PROT_READ | PROT_WRITE, MAP_SHARED | MAP_ANONYMOUS, -1, 0);
+            memset(pcmap_buffer, 0x00, pcmap_buffer_size);
+            mlock(pcmap_buffer, pcmap_buffer_size);
+
+            for (void* addr = pcmap_buffer; addr < pcmap_buffer + pcmap_buffer_size; addr += getpagesize()) {
+              kAFL_hypercall(HYPERCALL_KAFL_PERSIST_PAGE_PAST_SNAPSHOT, (uintptr_t)addr);
+            }
+        }
 
         agent_config_t agent_config = {0};
 
@@ -1075,6 +1100,11 @@ char *getenv(const char *name){
     if(get_harness_state()->afl_mode && !strcmp(name, "__AFL_SHM_ID")){
         return "5134680";
     }
+
+    if (get_harness_state()->afl_mode && !strcmp(name, "__AFL_PCMAP_SHM_ID")) {
+        return "5134681";
+    }
+
     return real_getenv(name);
 }
 
@@ -1087,6 +1117,10 @@ void *shmat(int shmid, const void *shmaddr, int shmflg){
 #endif
         }
         return trace_buffer;
+    }
+
+    if (get_harness_state()->afl_mode && shmid == 5134681) {
+      return pcmap_buffer;
     }
 
     void* (*_shmat)(int shmid, const void *shmaddr, int shmflg) = dlsym(RTLD_NEXT, "shmat"); 
