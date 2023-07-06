@@ -33,7 +33,7 @@ $(HTOOLS):
 	$(CC) $(HTOOLS_CFLAGS) $^ -o $@
 
 LDPRELOAD_LIB := ld_preload_fuzz.so
-LDPRELOAD_SRCS := ../src/ld_preload_fuzz.c ../src/misc/crash_handler.c ../src/misc/harness_state.c ../src/netfuzz/syscalls.c
+LDPRELOAD_SRCS := ../src/ld_preload_fuzz.c ../src/misc/crash_handler.c ../src/misc/harness_state.c ../src/netfuzz/syscalls.c ../src/misc/code_coverage.c
 LDPRELOAD_CFLAGS += -shared -fPIC -ldl -g -Og -Werror -I../src -I../../../ $(CFLAGS)
 LDPRELOAD_CFLAGS += -DLEGACY_MODE
 
